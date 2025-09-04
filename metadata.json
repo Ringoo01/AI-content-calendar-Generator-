@@ -1,0 +1,5 @@
+{
+  "name": "Social Media Content Calendar Generator",
+  "description": "An AI-powered application that generates a detailed social media content calendar for a brand based on user-defined parameters like target audience, content themes, platforms, and key dates.",
+  "requestFramePermissions": []
+}
