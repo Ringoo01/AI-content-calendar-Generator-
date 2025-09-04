@@ -107,3 +107,74 @@ export const generateCalendar = async (data: FormData): Promise<CalendarData | s
     return "An unknown error occurred while generating the calendar.";
   }
 };
+
+export const generateImage = async (prompt: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: `A high-quality, professional social media post image for: "${prompt}"`,
+            config: {
+              numberOfImages: 1,
+              outputMimeType: 'image/jpeg',
+              aspectRatio: '1:1',
+            },
+        });
+
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
+            return `data:image/jpeg;base64,${base64ImageBytes}`;
+        } else {
+            throw new Error("Image generation was successful but returned no images.");
+        }
+    } catch (error) {
+        console.error("Error generating image:", error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to generate image: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred during image generation.");
+    }
+};
+
+export const startVideoGeneration = async (prompt: string): Promise<any> => {
+    try {
+        const operation = await ai.models.generateVideos({
+            model: 'veo-2.0-generate-001',
+            prompt: `A short, engaging social media video about: "${prompt}"`,
+            config: {
+                numberOfVideos: 1
+            }
+        });
+        return operation;
+    } catch (error) {
+        console.error("Error starting video generation:", error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to start video generation: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred while starting video generation.");
+    }
+};
+
+export const getVideoOperationStatus = async (operation: any): Promise<any> => {
+    try {
+        const status = await ai.operations.getVideosOperation({ operation: operation });
+        return status;
+    } catch (error) {
+        console.error("Error getting video operation status:", error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to check video status: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred while checking video status.");
+    }
+};
+
+
+export const fetchVideo = async (downloadLink: string): Promise<Blob> => {
+    if (!process.env.API_KEY) {
+        throw new Error("API key not available for fetching video.");
+    }
+    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+    if (!response.ok) {
+        throw new Error(`Failed to download video: ${response.statusText}`);
+    }
+    return response.blob();
+};

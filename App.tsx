@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { generateCalendar } from './services/geminiService';
+import { generateCalendar, generateImage, startVideoGeneration, getVideoOperationStatus, fetchVideo } from './services/geminiService';
 import type { FormData, Platform, CalendarData, PostIdea, CalendarEntry } from './types';
-import { PlusIcon, TrashIcon, SparklesIcon, ClipboardIcon, CheckIcon, PlatformIcon, ExportIcon } from './components/icons';
+import { PlusIcon, TrashIcon, SparklesIcon, ClipboardIcon, CheckIcon, PlatformIcon, ExportIcon, PhotoIcon, SpinnerIcon } from './components/icons';
 
 const initialFormData: FormData = {
   brandName: "",
@@ -54,6 +54,13 @@ const FormTextarea: React.FC<{ label: string; name: string; value: string; onCha
 const PostCard: React.FC<{ post: PostIdea }> = ({ post }) => {
     const [isScheduled, setIsScheduled] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
+    const [visualState, setVisualState] = useState<{
+        status: 'idle' | 'generating' | 'polling' | 'success' | 'error';
+        url: string | null;
+        message: string | null;
+        type: 'image' | 'video' | null;
+    }>({ status: 'idle', url: null, message: null, type: null });
+
 
     const handleCopy = () => {
         const textToCopy = `Platform: ${post.platform}\nIdea: ${post.idea}\n\nCaption:\n${post.caption}\n\nHashtags: ${post.hashtags}`;
@@ -62,8 +69,76 @@ const PostCard: React.FC<{ post: PostIdea }> = ({ post }) => {
         setTimeout(() => setIsCopied(false), 2000);
     }
     
+    const handleGenerateVisual = async () => {
+        setVisualState({ status: 'generating', url: null, message: 'Preparing to generate...', type: null });
+        
+        const isVideo = /video|reel|short|animation/i.test(post.visual);
+        const prompt = post.idea; 
+
+        if (isVideo) {
+            setVisualState(prev => ({ ...prev, type: 'video', message: 'Starting video generation...' }));
+            try {
+                let operation = await startVideoGeneration(prompt);
+                setVisualState(prev => ({ ...prev, status: 'polling', message: 'Video generation started. This can take several minutes. Checking status...' }));
+
+                while (!operation.done) {
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                    operation = await getVideoOperationStatus(operation);
+                }
+
+                const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+                if (downloadLink) {
+                    setVisualState(prev => ({ ...prev, status: 'generating', message: 'Finalizing video...' }));
+                    const blob = await fetchVideo(downloadLink);
+                    const videoUrl = URL.createObjectURL(blob);
+                    setVisualState({ status: 'success', url: videoUrl, message: null, type: 'video' });
+                } else {
+                    throw new Error("Video process finished but no downloadable video was found.");
+                }
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+                setVisualState({ status: 'error', url: null, message: errorMessage, type: 'video' });
+            }
+        } else {
+            setVisualState(prev => ({ ...prev, type: 'image', message: 'Generating image...' }));
+            try {
+                const imageUrl = await generateImage(prompt);
+                setVisualState({ status: 'success', url: imageUrl, message: null, type: 'image' });
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+                setVisualState({ status: 'error', url: null, message: errorMessage, type: 'image' });
+            }
+        }
+    };
+    
     return (
-        <div className={`p-2.5 rounded-lg mb-2 ${isScheduled ? 'bg-green-50 border-l-4 border-green-400' : 'bg-white hover:bg-gray-50/80 border'}`}>
+        <div className={`p-2.5 rounded-lg mb-2 transition-all duration-300 ${isScheduled ? 'bg-green-50 border-l-4 border-green-400' : 'bg-white hover:bg-gray-50/80 border'}`}>
+            <div className="relative aspect-video bg-gray-200 rounded-md mb-2.5 flex items-center justify-center overflow-hidden">
+                {visualState.status === 'success' && visualState.url ? (
+                    visualState.type === 'image' ? (
+                        <img src={visualState.url} alt={post.idea} className="w-full h-full object-cover" />
+                    ) : (
+                        <video src={visualState.url} controls className="w-full h-full object-cover bg-black" />
+                    )
+                ) : (visualState.status === 'generating' || visualState.status === 'polling') ? (
+                    <div className="text-center p-2">
+                        <SpinnerIcon className="w-8 h-8 text-indigo-500 mx-auto" />
+                        <p className="text-xs text-gray-600 mt-2 font-medium">{visualState.message}</p>
+                    </div>
+                ) : visualState.status === 'error' ? (
+                     <div className="text-center p-2 text-red-600">
+                        <p className="text-xs font-semibold">Generation Failed</p>
+                        <p className="text-[10px] mt-1">{visualState.message}</p>
+                        <button onClick={handleGenerateVisual} className="mt-2 px-2 py-0.5 text-xs bg-red-100 rounded">Retry</button>
+                    </div>
+                ) : (
+                    <div className="text-center">
+                        <PhotoIcon className="w-8 h-8 text-gray-400"/>
+                        <p className="text-xs text-gray-500 mt-1">No visual generated</p>
+                    </div>
+                )}
+            </div>
+            
             <div className="flex items-center justify-between text-xs font-semibold text-gray-600 mb-1.5">
                 <div className="flex items-center gap-1.5">
                     <PlatformIcon platform={post.platform} className="w-4 h-4 text-gray-400" />
@@ -73,16 +148,25 @@ const PostCard: React.FC<{ post: PostIdea }> = ({ post }) => {
             </div>
             <p className="text-sm font-medium text-gray-800 leading-snug">{post.idea}</p>
             <p className="text-xs text-gray-500 mt-1">{post.caption.substring(0, 50)}...</p>
-            <div className="mt-2.5 flex items-center justify-between">
+            
+            <div className="mt-2.5 flex items-center justify-between gap-2">
                 <button
-                    onClick={() => setIsScheduled(!isScheduled)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors ${isScheduled ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>
-                    {isScheduled ? <CheckIcon className="w-3 h-3" /> : <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
-                    {isScheduled ? 'Scheduled' : 'Schedule'}
+                    onClick={handleGenerateVisual}
+                    disabled={visualState.status === 'generating' || visualState.status === 'polling' || visualState.status === 'success'}
+                    className="flex-1 px-2.5 py-1 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition-colors bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed">
+                    <PhotoIcon className="w-3.5 h-3.5" />
+                    {visualState.status === 'success' ? 'Visual Ready' : 'Generate Visual'}
                 </button>
-                 <button onClick={handleCopy} className={`p-1.5 rounded-md transition-colors ${isCopied ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                    {isCopied ? <CheckIcon className="w-3.5 h-3.5"/> : <ClipboardIcon className="w-3.5 h-3.5"/>}
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => setIsScheduled(!isScheduled)}
+                        className={`p-1.5 rounded-md flex items-center transition-colors ${isScheduled ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>
+                        {isScheduled ? <CheckIcon className="w-3.5 h-3.5" /> : <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
+                    </button>
+                     <button onClick={handleCopy} className={`p-1.5 rounded-md transition-colors ${isCopied ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                        {isCopied ? <CheckIcon className="w-3.5 h-3.5"/> : <ClipboardIcon className="w-3.5 h-3.5"/>}
+                    </button>
+                </div>
             </div>
         </div>
     )
@@ -102,11 +186,10 @@ const CalendarView: React.FC<{ data: CalendarData, monthName: string }> = ({ dat
         calendarDays[firstDayOfMonth + day -1] = entry;
     });
     
-    // Fill remaining days if API didn't provide them
     for(let i=0; i < daysInMonth; i++) {
         const index = firstDayOfMonth + i;
-        if (!calendarDays[index]) {
-            calendarDays[index] = { date: `${monthName} ${i + 1}`, posts: [] };
+        if (index >= calendarDays.length || !calendarDays[index]) {
+             calendarDays[index] = { date: `${monthName} ${i + 1}`, posts: [] };
         }
     }
 
@@ -117,7 +200,7 @@ const CalendarView: React.FC<{ data: CalendarData, monthName: string }> = ({ dat
                 {days.map(day => <div key={day}>{day}</div>)}
             </div>
             <div className="grid grid-cols-7 grid-rows-5 gap-1 flex-grow">
-                {calendarDays.map((dayData, index) => (
+                {calendarDays.slice(0, 35).map((dayData, index) => (
                     <div key={index} className={`bg-gray-50/70 rounded-lg p-1.5 border flex flex-col ${dayData ? '' : 'bg-gray-100/50'}`}>
                         {dayData && (
                             <>
