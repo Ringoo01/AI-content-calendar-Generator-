@@ -162,7 +162,7 @@ const PublishModal: React.FC<{
 
     const getNote = () => {
         if (connectionKey === 'meta') {
-            return `This will make a REAL API call to your local Python server, which will post to your connected Facebook Page.`;
+            return `This will make a REAL API call via the backend server to publish this post to your connected Facebook Page.`;
         }
         return `This is a simulation. Clicking "Confirm" will mimic a real API call to the ${post.platform} platform.`;
     }
@@ -328,19 +328,34 @@ const PostCard: React.FC<{ post: PostIdea; connections: Record<ConnectionKey, Co
                         <p className="text-xs text-gray-500 mt-1">{visualState.message}</p>
                     </div>
                 ) : visualState.status === 'error' ? (
-                    <div className="flex flex-col items-center justify-center h-full w-full text-center p-3 bg-red-50 text-red-800">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                        <p className="text-sm font-semibold">Generation Failed</p>
-                        <p className="text-xs mt-1 text-red-700">{visualState.message}</p>
-                        <button 
-                            onClick={handleGenerateVisual} 
-                            className="mt-3 px-3 py-1 text-xs font-medium bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-50 focus:ring-red-600"
-                        >
-                            Retry
-                        </button>
-                    </div>
+                    visualState.type === 'image' ? (
+                        <div className="flex flex-col items-center justify-center h-full w-full text-center p-3 bg-gray-100">
+                            <div className="text-gray-400">
+                                <PhotoIcon className="w-12 h-12" />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2 font-medium">Image generation failed</p>
+                            <button 
+                                onClick={handleGenerateVisual} 
+                                className="mt-2 px-3 py-1 text-xs font-medium bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full w-full text-center p-3 bg-red-50 text-red-800">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <p className="text-sm font-semibold">Generation Failed</p>
+                            <p className="text-xs mt-1 text-red-700">{visualState.message}</p>
+                            <button 
+                                onClick={handleGenerateVisual} 
+                                className="mt-3 px-3 py-1 text-xs font-medium bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-50 focus:ring-red-600"
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    )
                 ) : (
                     <div className="text-center">
                         <PhotoIcon className="w-8 h-8 text-gray-400"/>
@@ -713,7 +728,7 @@ const FormPage: React.FC<{
                           </div>
                       ))}
                   </div>
-                  <p className="text-xs text-gray-500">Connecting to Meta enables publishing via a local Python server. Other connections are simulated.</p>
+                  <p className="text-xs text-gray-500">Connecting to Meta will open a pop-up to securely log in and authorize the application. Other connections are simulated.</p>
               </fieldset>
 
             <fieldset className="space-y-4">
