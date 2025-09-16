@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { FormData, CalendarData } from '../types';
+import type { FormData, CalendarData, BrandIdentitySuggestion } from '../types';
 
 if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable not set");
@@ -7,7 +7,7 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const responseSchema = {
+const calendarResponseSchema = {
     type: Type.OBJECT,
     properties: {
         calendar: {
@@ -41,6 +41,16 @@ const responseSchema = {
     required: ["calendar"]
 };
 
+const suggestionResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        brandName: { type: Type.STRING, description: "A creative and fitting brand name." },
+        targetAudience: { type: Type.STRING, description: "A concise description of the primary target audience." },
+        tone: { type: Type.STRING, description: "The suggested tone of voice for communications." }
+    },
+    required: ["brandName", "targetAudience", "tone"]
+};
+
 
 const buildPrompt = (data: FormData): string => {
   const platformDetails = data.platforms
@@ -48,41 +58,94 @@ const buildPrompt = (data: FormData): string => {
     .map(p => `${p.name}: "${p.considerations}"`)
     .join('\n');
 
+  const imageContext = data.brandImage
+    ? "An image has been provided to represent the brand's visual identity and personality. Use it as a key reference for the tone, style, and subject matter of the content."
+    : "";
+
   return `
-    Generate a detailed social media content calendar for "${data.brandName}" for the month of "${data.month}".
+    You are an expert social media manager. Your task is to generate a complete and detailed social media content calendar for the brand "${data.brandName}" for the entire month of "${data.month}".
 
-    Target Audience: "${data.targetAudience}".
+    **Critical Instructions:**
+    1.  **Complete Calendar:** The output MUST cover every single day of the month of "${data.month}". From day 1 to the last day of the month. Do not omit any days.
+    2.  **Post Frequency:** Generate content based on this frequency: "${data.postFrequency}". This means some days might have multiple posts across different platforms, while others might have none, depending on the strategy.
+    3.  **JSON Structure:** The final output must be a single JSON object with a key "calendar". The value of "calendar" must be an array of objects, where each object represents a day.
 
-    Content Themes:
-    - Promotional: "${data.promotionalTheme}".
-    - Educational: "${data.educationalTheme}".
-    - Entertaining: "${data.entertainingTheme}".
-    - Engagement-focused: "${data.engagementTheme}".
-    - Community Building: "${data.communityTheme}".
+    **Brand & Content Details:**
 
-    Preferred Platforms (and specific content considerations for each):
+    ${imageContext}
+
+    - Brand: "${data.brandName}"
+    - Month: "${data.month}"
+    - Target Audience: "${data.targetAudience}"
+    - Tone of Voice: "${data.tone}"
+
+    **Content Themes to incorporate:**
+    - Promotional: "${data.promotionalTheme}"
+    - Educational: "${data.educationalTheme}"
+    - Entertaining: "${data.entertainingTheme}"
+    - Engagement-focused: "${data.engagementTheme}"
+    - Community Building: "${data.communityTheme}"
+
+    **Platforms & Specifics:**
     ${platformDetails}
 
-    Key Dates/Campaigns to Include:
+    **Key Dates/Campaigns:**
     "${data.keyDates}"
 
-    For each day of the month, create a JSON object. The 'date' field should be a string like "Month Day" (e.g., "${data.month} 1"). The 'posts' field should be an array of post objects.
+    **Output Format Example for a single day with multiple posts:**
+    {
+      "date": "${data.month} 1",
+      "posts": [
+        {
+          "platform": "Instagram",
+          "theme": "Educational",
+          "idea": "A carousel post explaining 3 ways to style our new scarf.",
+          "caption": "New scarf, endless possibilities! ✨ Which style is your favorite? 1, 2, or 3? Let us know below! #StyleGuide #ScarfSeason #HowToStyle",
+          "hashtags": "#styleguide #scarfseason #howtostyle #fashiontips",
+          "visual": "A 3-slide carousel image with high-quality graphics and product photos showing each style."
+        },
+        {
+          "platform": "TikTok",
+          "theme": "Entertaining",
+          "idea": "A quick transition video showing the scarf with 5 different outfits in 10 seconds.",
+          "caption": "5 looks, 1 scarf, 0 time wasted. Which one are you rocking this weekend? 🍂 #ScarfChallenge #OOTD #FallFashion",
+          "hashtags": "#fashionhacks #outfitinspo #tiktokfashion #transitionvideo",
+          "visual": "A short, fast-paced video set to a trending audio track, featuring quick cuts and outfit transitions."
+        }
+      ]
+    }
     
-    The tone should be "${data.tone}".
-    
-    Ensure every single day of the month of ${data.month} is included in the calendar array, even if there are no posts scheduled for that day. In that case, return an empty 'posts' array for that date.
+    For days with no posts scheduled, the 'posts' array should be empty. It is crucial that these days are still included in the final 'calendar' array to ensure the month is complete.
   `;
 };
 
 export const generateCalendar = async (data: FormData): Promise<CalendarData | string> => {
   try {
     const prompt = buildPrompt(data);
+    
+    const textPart = { text: prompt };
+    // FIX: Explicitly type `parts` to allow both text and image parts. This prevents a
+    // TypeScript error when adding the image part to the array, which would
+    // otherwise be inferred as containing only text parts.
+    const parts: ({ text: string; } | { inlineData: { mimeType: string; data: string; }; })[] = [textPart];
+
+    if (data.brandImage) {
+        const imagePart = {
+          inlineData: {
+            mimeType: data.brandImage.mimeType,
+            data: data.brandImage.data,
+          },
+        };
+        // Put image part first for better context
+        parts.unshift(imagePart);
+    }
+    
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: prompt,
+        contents: { parts: parts },
         config: {
             responseMimeType: "application/json",
-            responseSchema: responseSchema,
+            responseSchema: calendarResponseSchema,
         },
     });
     
@@ -107,6 +170,45 @@ export const generateCalendar = async (data: FormData): Promise<CalendarData | s
     return "An unknown error occurred while generating the calendar.";
   }
 };
+
+export const generateBrandIdentitySuggestions = async (description: string): Promise<BrandIdentitySuggestion | string> => {
+    try {
+        const prompt = `
+            Act as an expert brand strategist. Based on the following business description, generate a creative brand name, a clear target audience description, and a suitable brand tone.
+            
+            Business Description: "${description}"
+
+            Provide a single, concise suggestion for each field.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: suggestionResponseSchema,
+            },
+        });
+        
+        const text = response.text.trim();
+        const sanitizedText = text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+        const jsonData = JSON.parse(sanitizedText);
+        
+        if (jsonData && jsonData.brandName && jsonData.targetAudience && jsonData.tone) {
+            return jsonData as BrandIdentitySuggestion;
+        } else {
+            throw new Error("Invalid JSON structure received for brand suggestions.");
+        }
+
+    } catch (error) {
+        console.error("Error generating brand suggestions:", error);
+        if (error instanceof Error) {
+            return `An error occurred while generating suggestions: ${error.message}.`;
+        }
+        return "An unknown error occurred while generating suggestions.";
+    }
+};
+
 
 export const generateImage = async (prompt: string): Promise<string> => {
     try {
@@ -139,7 +241,7 @@ export const startVideoGeneration = async (prompt: string): Promise<any> => {
     try {
         const operation = await ai.models.generateVideos({
             model: 'veo-2.0-generate-001',
-            prompt: `A short, engaging social media video about: "${prompt}"`,
+            prompt: `short, engaging social media video with upbeat music and text overlays about: "${prompt}"`,
             config: {
                 numberOfVideos: 1
             }

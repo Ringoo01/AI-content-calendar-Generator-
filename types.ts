@@ -7,6 +7,7 @@ export interface Platform {
 export interface FormData {
   brandName: string;
   month: string;
+  postFrequency: string;
   targetAudience: string;
   promotionalTheme: string;
   educationalTheme: string;
@@ -16,6 +17,10 @@ export interface FormData {
   platforms: Platform[];
   keyDates: string;
   tone: string;
+  brandImage?: {
+    mimeType: string;
+    data: string; // base64 encoded string
+  };
 }
 
 export interface PostIdea {
@@ -34,4 +39,19 @@ export interface CalendarEntry {
 
 export interface CalendarData {
     calendar: CalendarEntry[];
+}
+
+export interface BrandIdentitySuggestion {
+  brandName: string;
+  targetAudience: string;
+  tone: string;
+}
+
+export type ConnectionKey = 'meta' | 'tiktok' | 'snapchat';
+
+export interface Connection {
+  id: ConnectionKey;
+  name: string;
+  connected: boolean;
+  Icon: React.FC<{ className?: string }>;
 }
