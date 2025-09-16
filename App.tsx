@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { generateCalendar, generateImage, startVideoGeneration, getVideoOperationStatus, fetchVideo, generateBrandIdentitySuggestions } from './services/geminiService';
-import { handleConnection, publishPost } from './services/socialService';
-import type { FormData, Platform, CalendarData, PostIdea, CalendarEntry, BrandIdentitySuggestion, Connection, ConnectionKey } from './types';
-import { PlusIcon, TrashIcon, SparklesIcon, ClipboardIcon, CheckIcon, PlatformIcon, ExportIcon, PhotoIcon, SpinnerIcon, MetaIcon, TikTokIcon, SnapchatIcon, UploadCloudIcon } from './components/icons';
+import type { FormData, Platform, CalendarData, PostIdea, CalendarEntry, BrandIdentitySuggestion } from './types';
+import { PlusIcon, TrashIcon, SparklesIcon, ClipboardIcon, CheckIcon, PlatformIcon, ExportIcon, PhotoIcon, SpinnerIcon } from './components/icons';
 
 const initialFormData: FormData = {
   brandName: "",
@@ -133,118 +132,15 @@ const ImageUpload: React.FC<{
   );
 };
 
-const PublishModal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  post: PostIdea;
-  visualUrl: string | null;
-  connectionKey: ConnectionKey | null;
-}> = ({ isOpen, onClose, post, visualUrl, connectionKey }) => {
-    const [publishState, setPublishState] = useState<{ status: 'idle' | 'publishing' | 'success' | 'error', message: string }>({ status: 'idle', message: '' });
-    
-    if (!isOpen) return null;
-    
-    const handleConfirmPublish = async () => {
-        if (!connectionKey) {
-            setPublishState({ status: 'error', message: 'Platform not supported for publishing.' });
-            return;
-        }
-        setPublishState({ status: 'publishing', message: `Publishing to ${post.platform}...` });
-        try {
-            const result = await publishPost(connectionKey, post, visualUrl);
-            setPublishState({ status: 'success', message: result.message });
-            setTimeout(onClose, 2500);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'An unknown error occurred.';
-            setPublishState({ status: 'error', message });
-        }
-    };
-
-    const getNote = () => {
-        if (connectionKey === 'meta') {
-            return `This will make a REAL API call via the backend server to publish this post to your connected Facebook Page.`;
-        }
-        return `This is a simulation. Clicking "Confirm" will mimic a real API call to the ${post.platform} platform.`;
-    }
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" aria-modal="true" role="dialog">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all">
-                <div className="p-5 border-b flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                        <UploadCloudIcon className="w-6 h-6 text-indigo-500" />
-                        Publish to {post.platform}
-                    </h3>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100" disabled={publishState.status === 'publishing'}>&times;</button>
-                </div>
-                <div className="p-5">
-                   {publishState.status === 'idle' ? (
-                        <div className="space-y-3">
-                            {visualUrl && (
-                                <div className="relative aspect-video bg-gray-200 rounded-md mb-2.5 flex items-center justify-center overflow-hidden">
-                                    {visualUrl.startsWith('data:image') ?
-                                        <img src={visualUrl} alt={post.idea} className="w-full h-full object-cover" /> :
-                                        <video src={visualUrl} controls className="w-full h-full object-cover bg-black" />
-                                    }
-                                </div>
-                            )}
-                            <div>
-                                <p className="text-xs font-medium text-gray-500">Caption</p>
-                                <p className="text-sm bg-gray-50 p-2 rounded-md mt-1">{post.caption}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs font-medium text-gray-500">Hashtags</p>
-                                <p className="text-sm text-indigo-600">{post.hashtags}</p>
-                            </div>
-                            <div className="text-xs text-amber-700 bg-amber-50 p-3 rounded-md mt-4">
-                                <strong>Note:</strong> {getNote()}
-                            </div>
-                        </div>
-                   ) : (
-                        <div className="flex flex-col items-center justify-center h-40">
-                           {publishState.status === 'publishing' && <SpinnerIcon className="w-8 h-8 text-indigo-500" />}
-                           {publishState.status === 'success' && <CheckIcon className="w-10 h-10 text-green-500" />}
-                           {publishState.status === 'error' && <div className="text-red-500 p-2 rounded-full bg-red-100">!</div>}
-                           <p className={`mt-3 text-sm font-medium text-center ${publishState.status === 'error' ? 'text-red-600' : 'text-gray-700'}`}>{publishState.message}</p>
-                        </div>
-                   )}
-                </div>
-                {publishState.status === 'idle' && (
-                  <div className="bg-gray-50 px-5 py-3 flex justify-end items-center gap-3 rounded-b-xl">
-                      <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
-                      <button type="button" onClick={handleConfirmPublish} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700">
-                          Confirm Publish
-                      </button>
-                  </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-
-const PostCard: React.FC<{ post: PostIdea; connections: Record<ConnectionKey, Connection> }> = ({ post, connections }) => {
+const PostCard: React.FC<{ post: PostIdea; }> = ({ post }) => {
     const [isScheduled, setIsScheduled] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
-    const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
     const [visualState, setVisualState] = useState<{
         status: 'idle' | 'generating' | 'polling' | 'success' | 'error';
         url: string | null;
         message: string | null;
         type: 'image' | 'video' | null;
     }>({ status: 'idle', url: null, message: null, type: null });
-
-    const getPlatformConnectionKey = (platformName: string): ConnectionKey | null => {
-        const p = platformName.toLowerCase();
-        if (p.includes('instagram') || p.includes('facebook')) return 'meta';
-        if (p.includes('tiktok')) return 'tiktok';
-        if (p.includes('snapchat')) return 'snapchat';
-        return null;
-    };
-    
-    const connectionKey = getPlatformConnectionKey(post.platform);
-    const isPlatformConnected = connectionKey ? connections[connectionKey]?.connected : false;
-
 
     const handleCopy = () => {
         const textToCopy = `Platform: ${post.platform}\nIdea: ${post.idea}\n\nCaption:\n${post.caption}\n\nHashtags: ${post.hashtags}`;
@@ -310,7 +206,6 @@ const PostCard: React.FC<{ post: PostIdea; connections: Record<ConnectionKey, Co
     
     return (
         <>
-        <PublishModal isOpen={isPublishModalOpen} onClose={() => setIsPublishModalOpen(false)} post={post} visualUrl={visualState.url} connectionKey={connectionKey} />
         <div className={`p-2.5 rounded-lg mb-2 transition-all duration-300 ${isScheduled ? 'bg-yellow-50/70 border-l-4 border-yellow-400' : 'bg-white hover:bg-gray-50/80 border'}`}>
             <div className="relative aspect-video bg-gray-200 rounded-md mb-2.5 flex items-center justify-center overflow-hidden">
                 {visualState.status === 'success' && visualState.url ? (
@@ -387,7 +282,7 @@ const PostCard: React.FC<{ post: PostIdea; connections: Record<ConnectionKey, Co
                 </button>
             </div>
 
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="mt-2">
                 {visualState.status === 'success' ? (
                     <button
                         onClick={handleGenerateVisual}
@@ -406,22 +301,13 @@ const PostCard: React.FC<{ post: PostIdea; connections: Record<ConnectionKey, Co
                         Generate Visual
                     </button>
                 )}
-                <button
-                    onClick={() => setIsPublishModalOpen(true)}
-                    disabled={!isPlatformConnected || visualState.status !== 'success'}
-                    className="w-full px-2.5 py-1 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition-colors bg-green-100 text-green-700 hover:bg-green-200 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
-                    title={isPlatformConnected ? (visualState.status !== 'success' ? 'Generate a visual first' : `Publish to ${post.platform}`) : `${post.platform} not connected`}
-                >
-                    <UploadCloudIcon className="w-3.5 h-3.5" />
-                    Publish
-                </button>
             </div>
         </div>
         </>
     )
 }
 
-const CalendarView: React.FC<{ data: CalendarData, monthName: string, connections: Record<ConnectionKey, Connection> }> = ({ data, monthName, connections }) => {
+const CalendarView: React.FC<{ data: CalendarData, monthName: string }> = ({ data, monthName }) => {
     const monthIndex = new Date(Date.parse(monthName +" 1, 2024")).getMonth();
     const year = new Date().getFullYear();
     const firstDayOfMonth = new Date(year, monthIndex, 1).getDay(); // 0=Sun, 1=Mon, ...
@@ -455,7 +341,7 @@ const CalendarView: React.FC<{ data: CalendarData, monthName: string, connection
                             <>
                                 <span className="font-semibold text-xs text-gray-700">{dayData.date.split(' ')[1]}</span>
                                 <div className="mt-1 overflow-y-auto flex-grow">
-                                    {dayData.posts.map((post, postIndex) => <PostCard key={postIndex} post={post} connections={connections} />)}
+                                    {dayData.posts.map((post, postIndex) => <PostCard key={postIndex} post={post} />)}
                                 </div>
                             </>
                         )}
@@ -572,10 +458,7 @@ const BrandAssistantModal: React.FC<{
 
 const FormPage: React.FC<{
   onCalendarGenerated: (data: CalendarData, formData: FormData) => void;
-  connections: Record<ConnectionKey, Connection>;
-  handleApiConnection: (id: ConnectionKey) => void;
-  connecting: ConnectionKey | null;
-}> = ({ onCalendarGenerated, connections, handleApiConnection, connecting }) => {
+}> = ({ onCalendarGenerated }) => {
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -704,33 +587,6 @@ const FormPage: React.FC<{
               <FormInput label="Tone" name="tone" value={formData.tone} onChange={handleInputChange} placeholder="e.g., Playful and Witty" />
             </fieldset>
 
-             <fieldset className="space-y-3">
-                  <legend className="text-lg font-medium text-gray-900">Connections</legend>
-                  <div className="p-3 bg-gray-50 rounded-lg border space-y-3">
-                      {Object.values(connections).map(({ id, name, connected, Icon }) => (
-                          <div key={id} className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                  <Icon className="w-6 h-6 text-gray-700" />
-                                  <span className="font-medium text-sm text-gray-800">{name}</span>
-                              </div>
-                              <button
-                                  type="button"
-                                  onClick={() => handleApiConnection(id)}
-                                  disabled={connecting !== null}
-                                  className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors w-24 text-center ${
-                                      connected 
-                                          ? 'bg-red-100 text-red-700 hover:bg-red-200' 
-                                          : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                                  } disabled:opacity-50 disabled:cursor-wait`}
-                              >
-                                  {connecting === id ? <SpinnerIcon className="w-4 h-4 mx-auto" /> : (connected ? 'Disconnect' : 'Connect')}
-                              </button>
-                          </div>
-                      ))}
-                  </div>
-                  <p className="text-xs text-gray-500">Connecting to Meta will open a pop-up to securely log in and authorize the application. Other connections are simulated.</p>
-              </fieldset>
-
             <fieldset className="space-y-4">
                 <legend className="text-lg font-medium text-gray-900 mb-2">Content Themes</legend>
                 <FormTextarea label="Promotional" name="promotionalTheme" value={formData.promotionalTheme} onChange={handleInputChange} />
@@ -784,9 +640,8 @@ const FormPage: React.FC<{
 const CalendarPage: React.FC<{
   calendarData: CalendarData;
   formData: FormData;
-  connections: Record<ConnectionKey, Connection>;
   onBack: () => void;
-}> = ({ calendarData, formData, connections, onBack }) => {
+}> = ({ calendarData, formData, onBack }) => {
 
   const handleExportCSV = useCallback(() => {
     const escapeCSV = (str: string) => {
@@ -847,7 +702,7 @@ const CalendarPage: React.FC<{
           </div>
       </div>
       <div className="flex-grow relative">
-          <CalendarView data={calendarData} monthName={formData.month} connections={connections} />
+          <CalendarView data={calendarData} monthName={formData.month} />
       </div>
     </div>
   );
@@ -856,31 +711,7 @@ const CalendarPage: React.FC<{
 const App: React.FC = () => {
   const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
   const [activeFormData, setActiveFormData] = useState<FormData | null>(null);
-  const [connections, setConnections] = useState<Record<ConnectionKey, Connection>>({
-    meta: { id: 'meta', name: 'Meta (Facebook, Instagram)', connected: false, Icon: MetaIcon },
-    tiktok: { id: 'tiktok', name: 'TikTok', connected: false, Icon: TikTokIcon },
-    snapchat: { id: 'snapchat', name: 'Snapchat', connected: false, Icon: SnapchatIcon },
-  });
-  const [connecting, setConnecting] = useState<ConnectionKey | null>(null);
 
-  const handleApiConnection = async (id: ConnectionKey) => {
-    const isConnected = connections[id].connected;
-    setConnecting(id);
-    try {
-        const result = await handleConnection(id, isConnected);
-        console.log(result.message); // Log the simulation message
-        setConnections(prev => ({
-            ...prev,
-            [id]: { ...prev[id], connected: !isConnected }
-        }));
-    } catch (error) {
-        console.error(error);
-        // Optionally show an error to the user
-    } finally {
-        setConnecting(null);
-    }
-  };
-  
   const handleCalendarGenerated = (data: CalendarData, formData: FormData) => {
     setCalendarData(data);
     setActiveFormData(formData);
@@ -908,15 +739,11 @@ const App: React.FC = () => {
           <CalendarPage 
             calendarData={calendarData}
             formData={activeFormData}
-            connections={connections}
             onBack={handleBackToForm}
           />
         ) : (
           <FormPage
             onCalendarGenerated={handleCalendarGenerated}
-            connections={connections}
-            handleApiConnection={handleApiConnection}
-            connecting={connecting}
           />
         )}
       </main>

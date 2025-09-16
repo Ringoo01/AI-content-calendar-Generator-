@@ -46,12 +46,3 @@ export interface BrandIdentitySuggestion {
   targetAudience: string;
   tone: string;
 }
-
-export type ConnectionKey = 'meta' | 'tiktok' | 'snapchat';
-
-export interface Connection {
-  id: ConnectionKey;
-  name: string;
-  connected: boolean;
-  Icon: React.FC<{ className?: string }>;
-}
